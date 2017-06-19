@@ -1,0 +1,43 @@
+﻿using System;
+using System.Collections.Generic;
+using OpenTK;
+using OpenTK.Input;
+using OpenTK.Graphics;
+using OpenTK.Graphics.OpenGL;
+using Labs.Lab4;
+
+namespace Labs.ACW
+{
+    class Camera
+    {
+        private Matrix4 mFixed, mUser, mPath, mTrack;
+        private Matrix4 mCurrent;
+        private mode viewMode = mode.user;
+
+        public enum mode
+        { 
+            user,
+            fix,
+            track,
+            path
+        }
+
+        public void changeView(mode setMode)
+        {
+            viewMode = setMode;
+            switch (setMode)
+            { 
+                case mode.user:
+                    viewMode = setMode;
+                    break;
+                case mode.fix:
+                    break;
+                case mode.track:
+                    break;
+                case mode.path:
+                    break;
+            }
+        }
+
+    }
+}

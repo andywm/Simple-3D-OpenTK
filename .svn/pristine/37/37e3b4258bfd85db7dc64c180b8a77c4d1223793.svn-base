@@ -1,0 +1,246 @@
+﻿using System;
+using System.Collections.Generic;
+
+using Labs.Utility;
+using OpenTK;
+using OpenTK.Graphics;
+using OpenTK.Graphics.OpenGL;
+using Labs.Lab4;
+
+namespace Labs.ACW
+{
+    public class Physics
+    {
+        Vector4 g_ = new Vector4(0,-1f,0,0);
+        List<Ball> cleanupList = new List<Ball>();
+        public void SimulateFrame(float timestep, ShaderUtility mShader)
+        {
+            //Check all world objects against each ball, including every other ball.
+            foreach (Ball ball in World.Balls)
+            {
+                //Update Position then do the collision detection.
+                ball.vOldPosition = ball.vPosition;
+                ball.velocity += g_ * timestep;
+                ball.vPosition += (ball.velocity * ACWWindow.Centimetre);
+
+                //Ball Vs Ball
+                foreach (Ball other_ball in World.Balls) //Sphere Sphere Collision Detection
+                {
+                    if (ball != other_ball)
+                        CheckFor_SphereSphere_Collision(ball, other_ball);
+                    else
+                        continue;
+                }
+                //Ball Vs Cylinder
+                foreach (Cylinder cyli in World.Cylinders) //Sphere Cylinder Collision Detection
+                {
+                    CheckFor_SphereCylinder_Collision(cyli, ball, mShader);
+                }
+                foreach (Doom doom in World.BallsOfDoom)
+                {
+                    CheckFor_SphereSphere_Collision(ball, doom);
+                }
+                CheckFor_SpherePlane_Collision(ball);
+                //foreach (Plane plane in World.Boundaries) //Sphere Cylinder Collision Detection
+                //Check Doom Ball
+            }
+            //Remove dead objects from simlation. Go on Garbage Collector, do your thing.
+            while (cleanupList.Count > 0)
+            {
+                World.Balls.Remove(cleanupList[0]);
+                cleanupList.Remove(cleanupList[0]);
+            }
+        }
+
+        private bool CheckFor_SphereSphere_Collision(Ball b1, Sphere b2)
+        {
+            bool doomMode = false;
+            if (b2 is Doom)
+            { 
+                doomMode = true;
+            }
+
+            float separation = Math.Abs((b1.vPosition - b2.vPosition).Length);
+            #region visualisation_stuff
+
+            if (separation < ((Ball)b1).DistanceToNearestObject)
+            {
+                b1.DistanceToNearestObject = separation * 2;
+                b1.NearestContact = b2.vPosition-b1.vPosition;
+            }
+            if (doomMode == false && separation < ((Ball)b2).DistanceToNearestObject)
+            {
+                ((Ball)b2).DistanceToNearestObject = separation * 2;
+                ((Ball)b2).NearestContact = b1.vPosition - b2.vPosition;
+            }
+            #endregion
+
+            //are the balls further apart than the sum of their radii?
+            if (separation < (b1.radius + b2.radius)  * ACWWindow.Centimetre) 
+            {
+                if (doomMode)
+                {
+                    Reaction_SphereDoom(ref b1, separation);
+                }
+                else
+                {
+                    b1.vPosition = b1.vOldPosition;
+                    b2.vPosition = ((Ball)b2).vOldPosition;
+                    SphereSphere_Response(b1, (Ball)b2);
+                }
+            }
+            return true;
+        }
+
+        private void SphereSphere_Response(Ball b1, Ball b2)
+        {
+             
+
+                Vector4 normal = b2.vPosition - b1.vPosition;
+                normal.Normalize();
+                float conversionConst = 1E2f;
+                float e_ = 1f;
+                float mass1 = b1.GetMass() * conversionConst;
+                float mass2 = b2.GetMass() * conversionConst;
+                Console.WriteLine(mass1 + "kg * 1E2\n" + mass2 +"kg * 1E2");
+                float SumMass = mass1 + mass2;
+              
+
+                Vector4 velocityInDirectionOfCollision_C1 = Vector4.Dot(b1.velocity, normal) * normal;
+                Vector4 velocityInDirectionOfCollision_C2 = Vector4.Dot(b2.velocity, -normal) * -normal;
+
+                Vector4 retainC1 = ((mass1 * velocityInDirectionOfCollision_C1) + (mass2 * velocityInDirectionOfCollision_C2) + e_ * (mass2 * (velocityInDirectionOfCollision_C2 - velocityInDirectionOfCollision_C1))) / SumMass;
+                Vector4 retainC2 = ((mass1 * velocityInDirectionOfCollision_C1) + (mass2 * velocityInDirectionOfCollision_C2) + e_ * (mass1 * (velocityInDirectionOfCollision_C1 - velocityInDirectionOfCollision_C2))) / SumMass;
+
+                Vector4 velocityPerpendicularToCollision_C1 = b1.velocity - velocityInDirectionOfCollision_C1;
+                Vector4 velocityPerpendicularToCollision_C2 = b2.velocity - velocityInDirectionOfCollision_C2;
+
+                b1.velocity = velocityPerpendicularToCollision_C1 + retainC1;
+                b2.velocity = velocityPerpendicularToCollision_C2 + retainC2;
+        }
+
+        //This class has some special hackyness that needs to be killed and replaced with a nice solution.
+        private bool CheckFor_SphereCylinder_Collision(Cylinder cylinder, Ball ball, ShaderUtility mShader)
+        {
+            Vector4 vPoint1, centre, vPoint2;
+            float cylinderRadius, clen; //Radius and Length of the Cylinder.
+            Matrix4 mObjRotation; //Cylinder Transformation data.
+            
+            cylinder.GetCollisionData(out centre, out clen, out mObjRotation, out cylinderRadius);
+            vPoint1 = centre + new Vector4(0, ACWWindow.Centimetre * (clen / 2), 0, 0);
+            vPoint2 = centre - new Vector4(0, ACWWindow.Centimetre * (clen / 2), 0, 0);
+
+            float modifierPercentage = ball.radius + ball.radius / 2; //for extrapolating the previous position.
+
+            vPoint1 = Vector4.Transform((vPoint1), mObjRotation);
+            vPoint2 = Vector4.Transform((vPoint2), mObjRotation);
+
+            #region horrible_horribe_hacky_thing_oh_please_fix_this
+            if (Math.Abs(vPoint1.X) - Math.Abs(vPoint1.Z) > 1 || Math.Abs(vPoint1.Z) - Math.Abs(vPoint1.X) > 1)
+            {
+                if (Math.Abs(vPoint1.X) > Math.Abs(vPoint1.Z))
+                {
+                    vPoint1.Z = centre.Z;
+                    vPoint2.Z = centre.Z;
+                }
+                else
+                {
+                   vPoint1.X = centre.X;
+                   vPoint2.X = centre.X;
+                }
+            }
+            vPoint1.Y = centre.Y;
+            vPoint2.Y = centre.Y;
+            #endregion
+            
+            //Line Collision Algorith
+            Vector4 vP2toCentre = ball.vPosition - vPoint2;
+            Vector4 vP2P1_normal = (vPoint1 - vPoint2).Normalized();
+            Vector4 adjSide = Vector4.Dot(vP2toCentre, vP2P1_normal) * vP2P1_normal;
+            float len = adjSide.Length;
+
+            Vector4 vCentreToEdge = vPoint2 + (adjSide - ball.vPosition);
+           
+            Vector4 pointOfImpact = vPoint2 + adjSide;
+            #region visualisation_stuff
+            if (vCentreToEdge.Length < ball.DistanceToNearestObject)
+            {
+                ball.DistanceToNearestObject = vCentreToEdge.Length;
+                ball.NearestContact = (pointOfImpact - ball.vPosition).Normalized() * ball.DistanceToNearestObject*2;//Vector4.Transform(iPoint, mObjRotation.Inverted());
+            }
+            #endregion
+
+            if (vCentreToEdge.Length < ((ball.radius + cylinderRadius) * ACWWindow.Centimetre) || vCentreToEdge.Length < 0) //(vCentreToEdge.Length < mCircleRadius[circleID])
+            {
+                //if (len > 0 && len < (vPoint1 - vPoint2).Length) //Check not really needed if we're not considering anything outside the box...
+                {
+                    ball.vPosition = ball.vOldPosition;
+                    //this.vPosition = iPoint + iPoint.Normalized() * modifierPercentage; //Revert to previous position
+                    Vector4 normal =  - vCentreToEdge;
+                    normal = normal.Normalized();
+
+                    //velocity = velocity - 2 * Vector4.Dot(normal, velocity) * normal; //reflect!
+                    Reaction_BallCylinder(ref ball, ref normal);
+                    return true;
+                   
+                }
+            }
+            return false;
+        }
+        //Sphere - Planes
+        private void CheckFor_SpherePlane_Collision(Ball b)
+        {
+            float modifier = ACWWindow.Centimetre;
+            
+            Vector2 CollapsedPosition = new Vector2(b.vPosition.X * modifier, b.vPosition.Z * modifier);
+            if (CollapsedPosition.X > 0.5 - b.radius * (modifier*modifier))
+            {
+                Vector4 normal = new Vector4(1, 0, 0, 0);
+                React_OutOfBounds(b, normal);
+            }
+            if (CollapsedPosition.X < -0.5+b.radius * (modifier*modifier))
+            {
+                Vector4 normal = new Vector4(-1, 0, 0, 0);
+                React_OutOfBounds(b, normal);
+            }
+            if (CollapsedPosition.Y > 0.5 - b.radius * (modifier * modifier))
+            {
+                Vector4 normal = new Vector4(0, 0, 1, 0);
+                React_OutOfBounds(b, normal);
+            }
+            if (CollapsedPosition.Y < -0.5 + b.radius * (modifier * modifier))
+            {
+                Vector4 normal = new Vector4(0, 0, -1, 0);
+                React_OutOfBounds(b, normal);
+            }
+
+        }
+        private void React_OutOfBounds(Ball b, Vector4 normal)
+        {
+            float e_ = 1f;
+            b.velocity = b.velocity - (1 + e_) * Vector4.Dot(normal, b.velocity) * normal;
+            Console.WriteLine(b.velocity.Length);
+        }
+
+        private void Reaction_SphereDoom(ref Ball impactingBall, float cullAmount)
+        {
+            if (impactingBall.radius - (cullAmount * ACWWindow.Centimetre*2) > 0)
+            {
+                impactingBall.radius -= cullAmount*ACWWindow.Centimetre/2;
+                impactingBall.updateScale();
+            }
+            else
+            {
+                cleanupList.Add(impactingBall);
+            }
+            
+        }
+
+        private void Reaction_BallCylinder(ref Ball b, ref Vector4 normal)
+        {
+            float e_ = 0.6f;
+            b.velocity = b.velocity - (1 + e_) * Vector4.Dot(normal, b.velocity) * normal;
+            Console.WriteLine(b.velocity.Length);
+        }
+    }
+}

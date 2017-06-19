@@ -1,0 +1,244 @@
+﻿using System;
+using System.Collections.Generic;
+using Labs.Utility;
+using OpenTK;
+using OpenTK.Input;
+using OpenTK.Graphics;
+using OpenTK.Graphics.OpenGL;
+using Labs.Lab4;
+
+//100cm = Distance 10;
+
+//Note to self: Make Camera Class. Make Light Object Class too, lighting is a little... unorganised.
+
+namespace Labs.ACW
+{
+    public class ACWWindow : GameWindow
+    {
+        public const float Centimetre = 0.1f;
+        public const int viewDistance = 125;
+        public ACWWindow()
+            : base(
+                800, // Width
+                600, // Height
+                GraphicsMode.Default,
+                "Assessed Coursework",
+                GameWindowFlags.Default,
+                DisplayDevice.Default,
+                3, // major
+                3, // minor
+                GraphicsContextFlags.ForwardCompatible
+                )
+        {
+        }
+        public Timer mTimer;
+        private ShaderUtility mShader;
+        private Matrix4 mView;
+        private Vector4[] lightOrigins = { new Vector4(1, 10, -12, 1), new Vector4(0, 100, 70, 1), new Vector4(0, -10, -11, 1) };
+        private Vector4[] lightPosition = new Vector4[3];
+        int uAmbientLightLocation, uDiffuseLightLocation, uSpecularLightLocation;
+        int[] uLightPositionLocation = new int[3];
+        int uEyePos;
+
+        Cylinder forScaleTest;
+                
+        protected override void OnLoad(EventArgs e) //NOTE: THIS METHOD REQUIRES A MASSIVE CLEAN UP... Do that at some point...
+        {
+            mTimer = new Timer();
+            mTimer.Start();
+            // Set some GL state
+            GL.ClearColor(Color4.White);
+            GL.Enable(EnableCap.CullFace);
+            #region big_pile_of_stuff_needs_refactoring
+            //Shader Initialisation/Lighting
+            mShader = new ShaderUtility(@"ACW/Shaders/vLighting.vert", @"ACW/Shaders/fLighting.frag");
+            GL.UseProgram(mShader.ShaderProgramID);
+            
+            //Maybe Encapsulate the Lighting too?
+            mView = Matrix4.CreateTranslation(0, -2, -2);
+            Vector3[] colour = { new Vector3(0.1f, 0.1f, 0.1f), new Vector3(0.5f, 0.5f, 0.5f), new Vector3(0.1f, 0.1f, 0.1f) };
+            for (int i = 0; i < 3; i++)
+            {
+                uLightPositionLocation[i] = GL.GetUniformLocation(mShader.ShaderProgramID, "uLight[" + i + "].Position");
+                //Vector3 colour = new Vector3(0.1f, 0.0f, 0.0f);
+                lightPosition[i] = lightOrigins[i];// new Vector4(2+ i, 4 - i, -8.5f, 1);
+                lightPosition[i] = Vector4.Transform(lightPosition[i], mView);
+                GL.Uniform4(uLightPositionLocation[i], lightPosition[i]);
+
+                uAmbientLightLocation = GL.GetUniformLocation(mShader.ShaderProgramID, "uLight[" + i + "].AmbientLight");
+                GL.Uniform3(uAmbientLightLocation, colour[i] / 10);
+                uDiffuseLightLocation = GL.GetUniformLocation(mShader.ShaderProgramID, "uLight[" + i + "].DiffuseLight");
+                GL.Uniform3(uDiffuseLightLocation, colour[i]);
+                uSpecularLightLocation = GL.GetUniformLocation(mShader.ShaderProgramID, "uLight[" + i + "].SpecularLight");
+                GL.Uniform3(uSpecularLightLocation, colour[i]);
+            }
+           
+
+            int vPositionLocation = GL.GetAttribLocation(mShader.ShaderProgramID, "vPosition");
+            int vNormal = GL.GetAttribLocation(mShader.ShaderProgramID, "vNormal");
+
+            uEyePos = GL.GetUniformLocation(mShader.ShaderProgramID, "uEyePosition");
+            //Console.WriteLine(mView);
+            GL.Uniform4(uEyePos, mView.Row3);
+            #endregion
+
+            Surface.LoadSurface(ref mShader); ////CommentJump!
+            Ball.LoadGeometry(ref mShader);
+            Cylinder.LoadCylinder(ref mShader);
+            Box.LoadSurface(ref mShader);
+            GL.BindVertexArray(0);
+
+            int uView = GL.GetUniformLocation(mShader.ShaderProgramID, "uView");
+            GL.UniformMatrix4(uView, true, ref mView);
+           
+            
+            Vector3 v3_ = new Vector3(0,80,0);
+
+            float len = 100;
+            float radius = 50;
+
+            forScaleTest = new Cylinder(ref v3_, ref radius, ref len);
+         
+            World.Generate_AxisAlignedCylinders();
+            World.Generate_NonAxisAlignedCylinders();
+            World.Generate_DoomBall();
+
+            World.Generate_DodgerBlueBall(0, 0);
+            World.Generate_OrangeBall(0, 0);
+            base.OnLoad(e);
+
+        }
+
+        protected override void OnResize(EventArgs e)
+        {
+            base.OnResize(e);
+            GL.Viewport(this.ClientRectangle);
+            if (mShader != null)
+            {
+                int uProjectionLocation = GL.GetUniformLocation(mShader.ShaderProgramID, "uProjection");
+                Matrix4 projection = Matrix4.CreatePerspectiveFieldOfView(1, (float)ClientRectangle.Width / ClientRectangle.Height, 0.5f, viewDistance);
+                GL.UniformMatrix4(uProjectionLocation, true, ref projection);
+                
+            }
+        }
+
+        MouseState current, previous;
+        void Camera_MouseControlled(double time)
+        {
+            current = OpenTK.Input.Mouse.GetState();
+            if (current != previous)
+            {
+                Matrix4 cMat = mView;
+                // Mouse state has changed
+                int xdelta = current.X - previous.X;
+                int ydelta = current.Y - previous.Y;
+                int zdelta = current.Wheel - previous.Wheel; //For zoom.
+
+                Vector4 cheatPos = mView.Row3;
+
+                Vector4 x = mView.Column0;
+                Matrix4 xM = Matrix4.CreateTranslation(x.X, x.Y, x.Z);
+                xM *= Matrix4.CreateRotationY(xdelta * 0.001f);
+                mView *= xM;
+                Vector4 y = mView.Column1;
+                Matrix4 yM = Matrix4.CreateTranslation(y.X, y.Y, y.Z);
+                yM *= Matrix4.CreateRotationX(ydelta * 0.001f);
+
+                //Vector4 z = mView.Column2; //Probably not helpful.
+                //Matrix4 zM = Matrix4.CreateTranslation(z.X, z.Y, z.Z);
+                //zM *= Matrix4.CreateRotationX(zdelta * 0.01f);
+
+                mView *= yM;
+                mView.Row3 = cheatPos;
+                OpenTK.Input.Mouse.SetPosition(800,500);
+                int uView = GL.GetUniformLocation(mShader.ShaderProgramID, "uView");
+                GL.UniformMatrix4(uView, true, ref mView);
+            }
+            previous = current;
+        }
+
+        protected override void OnKeyPress(KeyPressEventArgs e)
+        {
+            base.OnKeyPress(e);
+            int uView;
+            char key = e.KeyChar;
+            uView = GL.GetUniformLocation(mShader.ShaderProgramID, "uView");
+            //if(key == 'w' || key == 'a' || key == 's' || key == 'd')
+            {
+                switch (key)
+                {
+                    case 'w':
+                        mView = mView * Matrix4.CreateTranslation(0.0f, 0.0f, 0.1f);
+                        break;
+                    case 's':
+                        mView = mView * Matrix4.CreateTranslation(0.0f, 0.0f, -0.1f);
+                        break;
+                    case 'a':
+                        //mView = mView * Matrix4.CreateRotationY(-0.025f);
+                        mView = mView * Matrix4.CreateRotationY(-0.025f);
+                        break;
+                    case 'd':
+                        mView = mView * Matrix4.CreateRotationY(0.025f);
+                        break; 
+                    case 'q':
+                        mView = mView * Matrix4.CreateTranslation(0,-1,0);
+                        break;
+                    case 'e':
+                        mView = mView * Matrix4.CreateTranslation(0, 1, 0);
+                        break;
+                }
+                for (int i = 0; i < 3; i++)
+                {
+                    lightPosition[i] = Vector4.Transform(lightOrigins[i], mView); //replace lightPos with a fixed start value
+                    GL.Uniform4(uLightPositionLocation[i], lightPosition[i]);
+                }
+            }
+            GL.UniformMatrix4(uView, true, ref mView);
+            //GL.Uniform4(uLightPositionLocation, lightPosition);
+            GL.Uniform4(uEyePos, mView.Row3);
+            Console.Clear();
+        }
+
+        protected override void OnUpdateFrame(FrameEventArgs e)
+        {
+            base.OnUpdateFrame(e);
+            float timestep = mTimer.GetElapsedSeconds();
+            World.gamePhysics.SimulateFrame(timestep, mShader);
+            ////Camera_MouseControlled(e.Time);
+        }
+
+        protected override void OnRenderFrame(FrameEventArgs e)
+        {
+            base.OnRenderFrame(e);
+            GL.Clear(ClearBufferMask.ColorBufferBit | ClearBufferMask.DepthBufferBit);
+            GL.Enable(EnableCap.DepthTest);
+
+            forScaleTest.Draw(ref mShader);
+            foreach (Ball b in World.Balls)
+            { 
+                b.Draw(ref mShader);
+                b.ShowPhysicsData(ref mShader);
+            }
+            World.DrawStages(ref mShader);
+
+            GL.BindVertexArray(0);
+            this.SwapBuffers();
+        }
+
+        protected override void OnUnload(EventArgs e)
+        {
+            Surface.UnloadGeometry();
+            Ball.UnloadGeometry();
+            Box.UnloadGeometry();
+            Cylinder.UnloadGeometry();
+            /*
+            GL.BindBuffer(BufferTarget.ArrayBuffer, 0);
+            GL.BindBuffer(BufferTarget.ElementArrayBuffer, 0);
+            GL.BindVertexArray(0);
+            GL.DeleteBuffers(mVBO_IDs.Length, mVBO_IDs);
+            GL.DeleteVertexArrays(mVAO_IDs.Length, mVAO_IDs);
+            mShader.Delete();*/
+            base.OnUnload(e);
+        }
+    }
+}

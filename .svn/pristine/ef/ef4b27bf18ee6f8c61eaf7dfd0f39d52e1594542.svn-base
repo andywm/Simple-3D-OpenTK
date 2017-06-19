@@ -1,0 +1,115 @@
+﻿using System;
+using System.Collections.Generic;
+using Labs.Utility;
+using OpenTK;
+using OpenTK.Graphics;
+using OpenTK.Graphics.OpenGL;
+
+namespace Labs.ACW
+{
+    public static class World
+    {
+        public static List<Box> Boxes = new List<Box>();
+        public static List<Cylinder> Cylinders = new List<Cylinder>();
+        public static List<Ball> Balls = new List<Ball>();
+        public static List<Doom> BallsOfDoom = new List<Doom>();
+        public static Physics gamePhysics = new Physics();
+
+        private static float aSize = 100; //absoloute box size...
+        private static int boxesDrawn = 0;
+        private static Vector3 v3;
+
+        public static void Generate_DodgerBlueBall(float x, float z)
+        {
+            float radius = 7;
+            float density = 0.0012f;
+            v3.X = 0; v3.Y = 42; v3.Z = 0;
+            if (x > -43 && x < 43)
+            {
+                v3.X = x;
+            }
+            if (z > -43 && z < 43)
+            {
+                v3.Z = z;
+            }
+
+            Balls.Add(new Ball(ref v3, radius, ref density, ref Aesthetics.DodgerBlue_Matte));
+        }
+        public static void Generate_OrangeBall(float x, float z)
+        {
+            float radius = 5;
+            float density = 0.001f;
+            v3.X = 0; v3.Y = 44; v3.Z = 0;
+            if (x > -45 && x < 45)
+            {
+                v3.X = x;
+            }
+            if (z > -45 && z < 45)
+            {
+                v3.Z = z;
+            }
+
+            Balls.Add(new Ball(ref v3, radius, ref density, ref Aesthetics.Orange_Shinny));
+        }
+
+        public static void Generate_AxisAlignedCylinders()
+        {
+            v3.Y = boxesDrawn * -100;
+            boxesDrawn++;
+            float radius = 7.5f;
+            float length = 100;
+            Vector3 rotation = new Vector3((float)Math.PI / 2, 0, 0);
+
+            Boxes.Add(new Box(ref v3, ref aSize, ref Aesthetics.MidGrey));
+            v3.X = 25;
+            Cylinders.Add(new Cylinder(ref v3, ref radius, ref length, ref rotation, ref Aesthetics.MidGrey));
+            v3.X = -25;
+            Cylinders.Add(new Cylinder(ref v3, ref radius, ref length, ref rotation, ref Aesthetics.MidGrey));
+            v3.X = 0;
+            rotation.Y = (float)(Math.PI / 2);//(float)Math.PI;
+            v3.Z = 23;
+            Cylinders.Add(new Cylinder(ref v3, ref radius, ref length, ref rotation, ref Aesthetics.MidGrey));
+            radius = 15;
+            v3.Z = -17;
+            Cylinders.Add(new Cylinder(ref v3, ref radius, ref length, ref rotation, ref Aesthetics.MidGrey));
+        }
+        public static void Generate_NonAxisAlignedCylinders()
+        {
+            v3.Y = boxesDrawn * -100;
+            boxesDrawn++;
+            float radius = 15f;
+            float length = 100;
+            Vector3 rotation = new Vector3((float)Math.PI / 2, -(float)(Math.PI / 4), 0);
+            v3.X = 0; v3.Z = 0;
+            Boxes.Add(new Box(ref v3, ref aSize, ref Aesthetics.MidGrey));
+            Cylinders.Add(new Cylinder(ref v3, ref radius, ref length, ref rotation, ref Aesthetics.MidGrey));
+            rotation.Y = (float)(Math.PI / 4);//(float)Math.PI;
+            radius = 10f;
+            Cylinders.Add(new Cylinder(ref v3, ref radius, ref length, ref rotation, ref Aesthetics.MidGrey));
+        }
+        public static void Generate_DoomBall()
+        {
+            v3.Y = boxesDrawn * -100;
+            boxesDrawn++;
+            float radius = 25f;
+            v3.X = 0; v3.Z = 0;
+            Boxes.Add(new Box(ref v3, ref aSize, ref Aesthetics.MidGrey));
+            BallsOfDoom.Add(new Doom(ref v3, radius, ref Aesthetics.Crimson));
+        }
+        public static void DrawStages(ref ShaderUtility mShader)
+        {
+            foreach (Box b in Boxes)
+            {
+                b.Draw(ref mShader);
+            }
+            foreach (Cylinder c in Cylinders)
+            {
+                c.Draw(ref mShader);
+            }
+            foreach (Doom d in BallsOfDoom)
+            {
+                d.Draw(ref mShader);
+            }
+        }
+    }
+}

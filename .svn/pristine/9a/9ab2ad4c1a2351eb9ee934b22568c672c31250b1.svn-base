@@ -1,0 +1,54 @@
+﻿#version 330
+uniform vec4 uEyePosition;
+//in vec4 iCol;
+
+in vec4 oNormal;
+in vec4 oSurfacePosition;
+
+struct LightProperties
+{
+	vec4 Position;
+	vec3 AmbientLight;
+	vec3 DiffuseLight;
+	vec3 SpecularLight;
+	float scope;
+};
+
+struct MaterialProperties
+{
+	vec3 AmbientReflectivity;
+	vec3 DiffuseReflectivity;
+	vec3 SpecularReflectivity;
+	float Shininess;
+};
+uniform LightProperties uLight[3];
+uniform MaterialProperties uMaterial;
+
+out vec4 FragColour;
+void main() 
+{ 
+	vec3 SunDirection = vec3(0,-1,0);
+	FragColour = vec4(0,0,0,0);
+	vec4 eyeDirection = normalize(uEyePosition - oSurfacePosition);
+
+	vec3 vNorm = vec3(oNormal.x, oNormal.y, oNormal.z);
+	vec4 SunLight = vec4(vec3(max(dot(vNorm, -SunDirection),0)), 1);
+
+	for(int i = 0; i < 3; ++i)
+	{
+		float dist = distance(uLight[i].Position, oSurfacePosition);
+		float attenuation = 1f / (0.2f * dist);
+
+		vec4 lightDir = normalize(uLight[i].Position - oSurfacePosition);
+
+		vec4 reflectedVector = reflect(-lightDir, oNormal);
+		float diffuseFactor = max(dot(oNormal, lightDir), 0);
+		float specularFactor = pow(max(dot( reflectedVector, eyeDirection), 0.0),uMaterial.Shininess);
+
+		FragColour = FragColour + 
+		(vec4((uLight[i].AmbientLight * uMaterial.AmbientReflectivity) +
+		 (uLight[i].DiffuseLight * uMaterial.DiffuseReflectivity * diffuseFactor) +
+		 (uLight[i].SpecularLight * uMaterial.SpecularReflectivity * specularFactor) ,1) * attenuation);
+	}
+	FragColour+=(SunLight*0.05f); //Sunlight comes from camera UP. Not a fixed world position. Easy fix if needed.
+}
