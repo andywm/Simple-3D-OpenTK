@@ -1,0 +1,2 @@
+# Simple-3D-OpenTK
+A simple 3D simulation written in C# using OpenTK. There are several chambers which a few hundred spheres will fall through, interacting along the way with axis aligned cylinders, non-axis-aligned cylinders, and a bonding box. The final stage has a large sphere which eats away at any object that contacts it. If a sphere makes it to the ground, its position is reset. The simulation is driven by a simple Euler numerical integration.
